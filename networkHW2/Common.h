@@ -1,3 +1,11 @@
+/*
+File Name : Common.h
+Author: 이시행
+Purpose: 기본 라이브러리 및 에러 처리 함수 선언
+Create date : 2025-05-21
+Modified date : 2025-05-21
+*/
+
 #pragma once
 #define _CRT_SECURE_NO_WARNINGS // 구형 C 함수 사용 시 경고 끄기
 #define _WINSOCK_DEPRECATED_NO_WARNINGS // 구형 소켓 API 사용 시 경고 끄기
@@ -13,8 +21,12 @@
 #include <iostream>
 #include <string>
 #include <algorithm>
+#include <thread>
+#include <atomic>
+#include <limits>
 
 #pragma comment(lib, "ws2_32") // ws2_32.lib 링크
+#define BUFSIZE    4096 // 버퍼 크기 정의
 
 // 소켓 함수 오류 출력 후 종료
 void err_quit(const char* msg)
@@ -54,36 +66,4 @@ void err_display(int errcode)
 		(char*)&lpMsgBuf, 0, NULL);
 	printf("[오류] %s\n", (char*)lpMsgBuf);
 	LocalFree(lpMsgBuf);
-}
-
-std::string cp949_to_utf8(const std::string& cp949_str) {
-    // CP949 → wide
-    int wlen = MultiByteToWideChar(949, 0, cp949_str.c_str(), -1, NULL, 0);
-    std::wstring wide_str(wlen, L'\0');
-    MultiByteToWideChar(949, 0, cp949_str.c_str(), -1, &wide_str[0], wlen);
-
-    // wide → UTF-8
-    int utf8len = WideCharToMultiByte(CP_UTF8, 0, wide_str.c_str(), -1, NULL, 0, NULL, NULL);
-    std::string utf8_str(utf8len, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide_str.c_str(), -1, &utf8_str[0], utf8len, NULL, NULL);
-
-    // 마지막 null 문자 제거
-    utf8_str.pop_back();
-    return utf8_str;
-}
-
-std::string utf8_to_cp949(const std::string& utf8_str) {
-	// UTF-8 → wide
-	int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, NULL, 0);
-	std::wstring wide_str(wlen, L'\0');
-	MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, &wide_str[0], wlen);
-
-	// wide → CP949
-	int cp949len = WideCharToMultiByte(949, 0, wide_str.c_str(), -1, NULL, 0, NULL, NULL);
-	std::string cp949_str(cp949len, '\0');
-	WideCharToMultiByte(949, 0, wide_str.c_str(), -1, &cp949_str[0], cp949len, NULL, NULL);
-
-	// 마지막 null 문자 제거
-	cp949_str.pop_back();
-	return cp949_str;
 }

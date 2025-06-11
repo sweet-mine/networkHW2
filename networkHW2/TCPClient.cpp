@@ -1,26 +1,24 @@
+#define NOMINMAX
 #include "Common.h"
 #include "Message.h"
-#include <thread>
-#include <atomic>
 
 char* SERVERIP = (char*)"127.0.0.1";
 #define SERVERPORT 9000
-#define BUFSIZE    512
 
 using namespace std;
 
 atomic<bool> running(true);
+string id;
 
 void recv_thread(SOCKET sock) {
     bool is_group;
-    bool is_file;
 	uint32_t msg_length;
     uint32_t header;
-    char c_buf[BUFSIZE];
+    MSGTYPE msg;
     while (running) {
 
         // 헤더 수신
-		int retval = recv(sock, (char*)&header, 32, 0);
+		int retval = recv(sock, (char*)&header, 4, 0);
         if (retval == SOCKET_ERROR) {
             err_display("recv()");
             break;
@@ -31,47 +29,83 @@ void recv_thread(SOCKET sock) {
         }
 
         // 헤더 읽기
-        parse_header(header, is_group, is_file, msg_length);
+        parse_header(header, is_group, msg_length);
 
         // 메시지 수신
-        retval = recv(sock, c_buf, msg_length, 0);
+        retval = recv(sock, (char*)&msg, msg_length, 0);
         if (retval == SOCKET_ERROR) {
             err_display("recv()");
             break;
         }
 
-        string buf(c_buf, retval);
-        buf = utf8_to_cp949(buf);
-        cout << "\n받은 데이터: " << buf << endl;
-        //cout.flush();
+		string dst(msg.dst);
+        string src(msg.src);
+        string data(msg.data);
+        dst = utf8_to_cp949(dst);
+		src = utf8_to_cp949(src);
+		data = utf8_to_cp949(data);
+
+        if(is_group) {
+            cout << "\n[그룹 메세지] " << src << " : " << data << "\n";
+        } else {
+            cout << "\n[개인 메세지] " << dst << " -> " << src << " : " << data << "\n";
+		}
     }
     running = false;
 }
 
 void send_thread(SOCKET sock) {
     bool is_group;
-    bool is_file;
     uint32_t msg_length;
     string buf;
+    MSGTYPE* msg;
+    string receiver; // 수신자 ID
+    string sender = id; // 송신자 ID
     while (running) {
-		cin >> is_group >> is_file;
+        cout << "메세지 전송 방식을 선택하세요(Group : 1, Private : 0) : ";
+		cin >> is_group;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        if(is_group != 0 && is_group != 1) {
+            cout << "잘못된 입력입니다. 다시 시도하세요.\n";
+            continue;
+		}
+        if (is_group == false) {
+            cout << "수신자 ID 입력하세요(공백 금지, 20바이트 이내) : ";
+            getline(cin, receiver);
+            if (receiver.empty() || receiver.size() > 20 || receiver.find(' ') != string::npos) {
+                cout << "ID에 공백이 포함됐거나 20바이트를 초과했습니다.\n";
+                continue;
+            }
+        }
+        receiver = cp949_to_utf8(receiver);
+        cout << "전송할 메세지를 입력하세요 : ";
         getline(cin, buf);
+		printf("메세지 입력 완료\n");
         if (buf.empty()) continue;
+       
         buf = cp949_to_utf8(buf);
-        msg_length = buf.size();
+		receiver = cp949_to_utf8(receiver);
+		sender = cp949_to_utf8(sender);
 
+        msg_length = buf.size() + 42;
         // 헤더 생성
-        uint32_t header = make_header(is_group, is_file, msg_length);
+        uint32_t header = make_header(is_group, msg_length);
 
+        // 메세지 생성
+        msg = create_msg(receiver, sender, buf);
+        if (msg == nullptr) {
+            cout << "메세지 생성 실패\n";
+            continue;
+        }
         // 헤더 전송
-		int retval = send(sock, (char*)&header, 32, 0);
+		int retval = send(sock, (char*)&header, 4, 0);
         if (retval == SOCKET_ERROR) {
             err_display("send()");
             break;
         }
 
         // 메세지 전송
-        retval = send(sock, buf.c_str(), msg_length, 0);
+        retval = send(sock, (char*)msg, msg_length, 0);
         if (retval == SOCKET_ERROR) {
             err_display("send()");
             break;
@@ -103,14 +137,12 @@ int main(int argc, char* argv[]) {
 
     retval = connect(sock, (struct sockaddr*)&serveraddr, sizeof(serveraddr));
     if (retval == SOCKET_ERROR) err_quit("connect()");
-
-    string id;
     bool flag = false;
 
+    // ID 송신 및 중복 확인
     while (true) {
         cout << "사용할 ID 입력 (공백 금지, 20바이트 이내)\n";
         getline(cin, id);
-        id = cp949_to_utf8(id);
         printf("\n");
         if (id.empty() || id.size() > 20 || id.find(' ') != string::npos) {
             cout << "공백이 포함됐거나 20바이트를 초과했습니다.\n";
@@ -118,8 +150,9 @@ int main(int argc, char* argv[]) {
         }
         else break;
     }
+    id = cp949_to_utf8(id);
 
-    retval = send(sock, id.c_str(), 20, 0);
+    retval = send(sock, id.c_str(), 21, 0);
     if (retval == SOCKET_ERROR) err_quit("send()");
 
     retval = recv(sock, (char*)&flag, 1, 0);
@@ -130,6 +163,38 @@ int main(int argc, char* argv[]) {
         WSACleanup();
         return 0;
     }
+
+    // 현재 유저 리스트 출력
+    int usersize;
+    char myid[21];
+	printf("*****현재 접속 유저 목록 *****\n");
+    retval = recv(sock, (char*)&usersize, sizeof(int), 0);
+    if (retval == SOCKET_ERROR) err_quit("recv()");
+    for (int i = 0; i < usersize; i++) {
+        retval = recv(sock, myid, 21, 0);
+        if (retval == SOCKET_ERROR) err_quit("recv()");
+        string idStr(myid);
+        idStr = utf8_to_cp949(idStr);
+        printf("%s\n", idStr.c_str());
+    }
+    
+    // 채팅 복원
+    int chatsize;
+    MSGTYPE msg;
+    
+	printf("*****복원된 채팅 목록 *****\n");
+    retval = recv(sock, (char*)&chatsize, sizeof(int), 0);
+    if (retval == SOCKET_ERROR) err_quit("recv()");
+    for (int i = 0; i < chatsize; i++) {
+        retval = recv(sock, (char*)&msg, sizeof(MSGTYPE), 0);
+        if (retval == SOCKET_ERROR) err_quit("recv()");
+        string src(msg.src);
+        string data(msg.data);
+        src = utf8_to_cp949(src);
+        data = utf8_to_cp949(data);
+        cout << "[그룹 메세지] " << src << " : " << data << "\n";
+    }
+
 
     thread t_recv(recv_thread, sock);
     thread t_send(send_thread, sock);
