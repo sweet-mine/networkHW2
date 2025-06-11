@@ -9,6 +9,21 @@ using namespace std;
 
 atomic<bool> running(true);
 string id;
+vector<string> chat_log;
+
+void save_chat_log() {
+    ofstream out("chat_log.txt");
+    if (!out.is_open()) {
+        cerr << "로그 파일 저장 실패.\n";
+        return;
+    }
+
+    for (const string& line : chat_log) {
+        out << line << "\n";
+    }
+    cout << "[시스템] 채팅 로그가 chat_log.txt에 저장되었습니다.\n";
+}
+
 
 void recv_thread(SOCKET sock) {
     bool is_group;
@@ -44,18 +59,24 @@ void recv_thread(SOCKET sock) {
         dst = utf8_to_cp949(dst);
 		src = utf8_to_cp949(src);
 		data = utf8_to_cp949(data);
+       
+        string formatted;
 
-        if(is_group) {
-            cout << "\n[그룹 메세지] " << src << " : " << data << "\n";
-        } else {
-            cout << "\n[개인 메세지] " << src << " -> " << dst << " : " << data << "\n";
-		}
+        if (is_group) {
+            formatted = "[그룹 메세지] " + src + " : " + data;
+        }
+        else {
+            formatted = "[개인 메세지] " + src + " -> " + dst + " : " + data;
+        }
+        
+        cout << "\n" << formatted << "\n";
+        chat_log.push_back(formatted);
     }
     running = false;
 }
 
 void send_thread(SOCKET sock) {
-    bool is_group;
+    int is_group;
     uint32_t msg_length;
     string buf;
     MSGTYPE* msg;
@@ -119,6 +140,7 @@ void send_thread(SOCKET sock) {
 
 int main(int argc, char* argv[]) {
     int retval;
+	atexit(save_chat_log);
 
     cout << "서버 IP를 입력하세요 : ";
     cin >> SERVERIP;
