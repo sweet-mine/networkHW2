@@ -24,6 +24,7 @@ Modified date : 2025-05-21
 #include <thread>
 #include <atomic>
 #include <limits>
+#include <vector>
 
 #pragma comment(lib, "ws2_32") // ws2_32.lib 링크
 #define BUFSIZE    4096 // 버퍼 크기 정의

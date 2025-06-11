@@ -2,7 +2,7 @@
 #include "Common.h"
 #include "Message.h"
 
-char* SERVERIP = (char*)"127.0.0.1";
+char SERVERIP[16];
 #define SERVERPORT 9000
 
 using namespace std;
@@ -48,7 +48,7 @@ void recv_thread(SOCKET sock) {
         if(is_group) {
             cout << "\n[그룹 메세지] " << src << " : " << data << "\n";
         } else {
-            cout << "\n[개인 메세지] " << dst << " -> " << src << " : " << data << "\n";
+            cout << "\n[개인 메세지] " << src << " -> " << dst << " : " << data << "\n";
 		}
     }
     running = false;
@@ -120,7 +120,9 @@ void send_thread(SOCKET sock) {
 int main(int argc, char* argv[]) {
     int retval;
 
-    if (argc > 1) SERVERIP = argv[1];
+    cout << "서버 IP를 입력하세요 : ";
+    cin >> SERVERIP;
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
